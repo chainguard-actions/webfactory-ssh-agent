@@ -1,0 +1,53 @@
+name: Test basic SSH agent setup
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate a test SSH key pair
+        run: |
+          ssh-keygen -t ed25519 -C "test@example.com" -f /tmp/test_key -N ""
+          echo "TEST_SSH_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_key >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - id: ssh-agent
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEY }}
+          log-public-key: true
+
+      - name: Assert SSH_AUTH_SOCK is set
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          echo "PASS: SSH_AUTH_SOCK is set to $SSH_AUTH_SOCK"
+
+      - name: Assert SSH agent is running and key is loaded
+        run: |
+          echo "Listing keys in SSH agent..."
+          ssh-add -l
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "FAIL: ssh-add -l returned exit code $EXIT_CODE (no keys loaded)"
+            exit 1
+          fi
+          echo "PASS: SSH agent has keys loaded"
+
+      - name: Assert the loaded key fingerprint matches
+        run: |
+          AGENT_FP=$(ssh-add -l | awk '{print $2}')
+          KEY_FP=$(ssh-keygen -lf /tmp/test_key.pub | awk '{print $2}')
+          echo "Agent fingerprint: $AGENT_FP"
+          echo "Key fingerprint:   $KEY_FP"
+          if [ "$AGENT_FP" != "$KEY_FP" ]; then
+            echo "FAIL: fingerprints do not match"
+            exit 1
+          fi
+          echo "PASS: fingerprints match"

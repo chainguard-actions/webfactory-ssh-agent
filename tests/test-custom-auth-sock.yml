@@ -1,0 +1,48 @@
+name: Test custom SSH auth socket path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate a test SSH key pair
+        run: |
+          ssh-keygen -t rsa -b 2048 -C "test@example.com" -f /tmp/test_rsa_key -N ""
+          echo "TEST_SSH_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_rsa_key >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - id: ssh-agent
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEY }}
+          ssh-auth-sock: /tmp/custom-ssh-agent.sock
+          log-public-key: false
+
+      - name: Assert SSH_AUTH_SOCK points to the custom path
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ "$SSH_AUTH_SOCK" != "/tmp/custom-ssh-agent.sock" ]; then
+            echo "FAIL: expected SSH_AUTH_SOCK=/tmp/custom-ssh-agent.sock, got $SSH_AUTH_SOCK"
+            exit 1
+          fi
+          echo "PASS: SSH_AUTH_SOCK is set to the custom path"
+
+      - name: Assert SSH agent socket file exists at custom path
+        run: |
+          if [ ! -S "/tmp/custom-ssh-agent.sock" ]; then
+            echo "FAIL: socket file does not exist at /tmp/custom-ssh-agent.sock"
+            exit 1
+          fi
+          echo "PASS: socket file exists at custom path"
+
+      - name: Assert key is loaded in the agent
+        run: |
+          ssh-add -l
+          if [ $? -ne 0 ]; then
+            echo "FAIL: no keys loaded in SSH agent"
+            exit 1
+          fi
+          echo "PASS: key is loaded in SSH agent"
