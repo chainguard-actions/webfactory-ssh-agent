@@ -1,0 +1,50 @@
+name: Test basic SSH agent setup
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate a test SSH key pair
+        run: |
+          ssh-keygen -t ed25519 -C "test@example.com" -f /tmp/test_key -N ""
+          echo "TEST_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_key >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - id: ssh-agent
+        name: Run ssh-agent action
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_PRIVATE_KEY }}
+          log-public-key: true
+
+      - name: Assert SSH_AUTH_SOCK is set
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          echo "PASS: SSH_AUTH_SOCK is set to $SSH_AUTH_SOCK"
+
+      - name: Assert SSH agent is running and key is loaded
+        run: |
+          echo "Listing keys in SSH agent..."
+          ssh-add -l
+          if [ $? -ne 0 ]; then
+            echo "FAIL: No keys loaded in SSH agent"
+            exit 1
+          fi
+          echo "PASS: SSH agent has keys loaded"
+
+      - name: Assert SSH agent socket file exists
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ ! -S "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK socket file does not exist at $SSH_AUTH_SOCK"
+            exit 1
+          fi
+          echo "PASS: SSH agent socket file exists"

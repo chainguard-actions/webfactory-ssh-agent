@@ -1,0 +1,62 @@
+name: Test custom ssh-agent-cmd, ssh-add-cmd, and git-cmd inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate a test SSH key and create wrapper scripts
+        run: |
+          # Generate a test key
+          ssh-keygen -t ed25519 -f /tmp/test_key -N ""
+          echo "TEST_SSH_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_key >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+          # Create wrapper scripts that delegate to real commands
+          mkdir -p /tmp/custom-cmds
+
+          cat > /tmp/custom-cmds/my-ssh-agent <<'SCRIPT'
+          #!/bin/sh
+          exec ssh-agent "$@"
+          SCRIPT
+          chmod +x /tmp/custom-cmds/my-ssh-agent
+
+          cat > /tmp/custom-cmds/my-ssh-add <<'SCRIPT'
+          #!/bin/sh
+          exec ssh-add "$@"
+          SCRIPT
+          chmod +x /tmp/custom-cmds/my-ssh-add
+
+          cat > /tmp/custom-cmds/my-git <<'SCRIPT'
+          #!/bin/sh
+          exec git "$@"
+          SCRIPT
+          chmod +x /tmp/custom-cmds/my-git
+
+      - id: action
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEY }}
+          ssh-agent-cmd: /tmp/custom-cmds/my-ssh-agent
+          ssh-add-cmd: /tmp/custom-cmds/my-ssh-add
+          git-cmd: /tmp/custom-cmds/my-git
+          log-public-key: true
+
+      - name: Assert SSH agent is running with custom commands
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          # Verify the agent has the key loaded
+          KEY_COUNT=$(ssh-add -l 2>/dev/null | wc -l)
+          echo "Keys loaded: $KEY_COUNT"
+          if [ "$KEY_COUNT" -lt 1 ]; then
+            echo "FAIL: no keys loaded in SSH agent"
+            exit 1
+          fi
+          echo "PASS: SSH agent running with custom commands and key loaded"

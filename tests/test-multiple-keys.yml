@@ -1,0 +1,55 @@
+name: Test SSH agent with multiple keys
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate multiple test SSH key pairs
+        run: |
+          ssh-keygen -t ed25519 -C "key1@example.com" -f /tmp/test_key1 -N ""
+          ssh-keygen -t ed25519 -C "key2@example.com" -f /tmp/test_key2 -N ""
+          # Combine keys with a newline separator as the action expects
+          {
+            echo "MULTI_KEY<<EOF"
+            cat /tmp/test_key1
+            cat /tmp/test_key2
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+      - id: ssh-agent
+        name: Run ssh-agent action with multiple keys
+        uses: .
+        with:
+          ssh-private-key: ${{ env.MULTI_KEY }}
+          log-public-key: true
+
+      - name: Assert SSH_AUTH_SOCK is set
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          echo "PASS: SSH_AUTH_SOCK is set"
+
+      - name: Assert multiple keys are loaded in agent
+        run: |
+          echo "Listing keys in SSH agent..."
+          KEY_COUNT=$(ssh-add -l | wc -l)
+          echo "Number of keys loaded: $KEY_COUNT"
+          if [ "$KEY_COUNT" -lt 2 ]; then
+            echo "FAIL: Expected at least 2 keys, but found $KEY_COUNT"
+            exit 1
+          fi
+          echo "PASS: Multiple keys loaded in SSH agent ($KEY_COUNT keys)"
+
+      - name: Assert socket file exists
+        run: |
+          if [ ! -S "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK socket file does not exist"
+            exit 1
+          fi
+          echo "PASS: SSH agent socket file exists"
