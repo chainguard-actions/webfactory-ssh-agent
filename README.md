@@ -9,6 +9,7 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 | Version | Tag | Upstream commit |
 |---------|-----|-----------------|
 | v0.10.0 | [`v0.10.0`](https://github.com/chainguard-actions/webfactory-ssh-agent/tree/v0.10.0) | [`e838748`](https://github.com/webfactory/ssh-agent/commit/e83874834305fe9a4a2997156cb26c5de65a8555) |
+| v0.7.0 | [`v0.7.0`](https://github.com/chainguard-actions/webfactory-ssh-agent/tree/v0.7.0) | [`836c84e`](https://github.com/webfactory/ssh-agent/commit/836c84ec59a0e7bc0eabc79988384eb567561ee2) |
 | v0.8.0 | [`v0.8.0`](https://github.com/chainguard-actions/webfactory-ssh-agent/tree/v0.8.0) | [`d4b9b8f`](https://github.com/webfactory/ssh-agent/commit/d4b9b8ff72958532804b70bbe600ad43b36d5f2e) |
 | v0.9.0 | [`v0.9.0`](https://github.com/chainguard-actions/webfactory-ssh-agent/tree/v0.9.0) | [`dc588b6`](https://github.com/webfactory/ssh-agent/commit/dc588b651fe13675774614f8e6a936a468676387) |
 | v0.9.1 | [`v0.9.1`](https://github.com/chainguard-actions/webfactory-ssh-agent/tree/v0.9.1) | [`a6f90b1`](https://github.com/webfactory/ssh-agent/commit/a6f90b1f127823b31d4d4a8d96047790581349bd) |
