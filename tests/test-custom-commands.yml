@@ -1,0 +1,67 @@
+name: Test custom ssh-agent-cmd, ssh-add-cmd, and git-cmd inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create custom command wrappers and generate test key
+        run: |
+          mkdir -p /tmp/custom-cmds
+
+          # Custom ssh-agent wrapper
+          cat > /tmp/custom-cmds/my-ssh-agent << 'WRAPPER'
+          #!/bin/sh
+          exec ssh-agent "$@"
+          WRAPPER
+          chmod +x /tmp/custom-cmds/my-ssh-agent
+
+          # Custom ssh-add wrapper
+          cat > /tmp/custom-cmds/my-ssh-add << 'WRAPPER'
+          #!/bin/sh
+          exec ssh-add "$@"
+          WRAPPER
+          chmod +x /tmp/custom-cmds/my-ssh-add
+
+          # Custom git wrapper
+          cat > /tmp/custom-cmds/my-git << 'WRAPPER'
+          #!/bin/sh
+          exec git "$@"
+          WRAPPER
+          chmod +x /tmp/custom-cmds/my-git
+
+          # Generate a test SSH key (no passphrase)
+          ssh-keygen -t ed25519 -C "test@example.com" -f /tmp/test_key -N ""
+
+          # Store the private key content for use in the next step
+          echo "TEST_SSH_KEY<<EOF" >> "$GITHUB_ENV"
+          cat /tmp/test_key >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - id: action
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEY }}
+          ssh-agent-cmd: /tmp/custom-cmds/my-ssh-agent
+          ssh-add-cmd: /tmp/custom-cmds/my-ssh-add
+          git-cmd: /tmp/custom-cmds/my-git
+          log-public-key: 'true'
+
+      - name: Assert SSH agent is running with custom commands
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          echo "Listing loaded keys..."
+          ssh-add -l
+          KEY_COUNT=$(ssh-add -l | wc -l)
+          echo "Keys loaded: $KEY_COUNT"
+          if [ "$KEY_COUNT" -lt 1 ]; then
+            echo "FAIL: no SSH keys loaded"
+            exit 1
+          fi
+          echo "PASS: SSH agent running with custom commands and key loaded"

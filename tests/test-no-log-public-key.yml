@@ -1,0 +1,57 @@
+name: Test SSH agent with log-public-key disabled
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate a test SSH key pair
+        run: |
+          ssh-keygen -t ed25519 -f /tmp/test_key_nolog -N "" -C "nolog@example.com"
+          echo "TEST_SSH_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_key_nolog >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - id: ssh-agent
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEY }}
+          log-public-key: false
+
+      - name: Assert SSH agent socket exists
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          if [ ! -S "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK socket does not exist at $SSH_AUTH_SOCK"
+            exit 1
+          fi
+          echo "PASS: SSH agent socket exists"
+
+      - name: Assert key is loaded in agent even without logging
+        run: |
+          KEY_COUNT=$(ssh-add -l | wc -l)
+          echo "Keys loaded: $KEY_COUNT"
+          ssh-add -l
+          if [ "$KEY_COUNT" -lt 1 ]; then
+            echo "FAIL: No keys loaded in SSH agent"
+            exit 1
+          fi
+          echo "PASS: Key is loaded in SSH agent"
+
+      - name: Assert loaded key fingerprint matches
+        run: |
+          EXPECTED_FP=$(ssh-keygen -lf /tmp/test_key_nolog.pub | awk '{print $2}')
+          LOADED_FP=$(ssh-add -l | awk '{print $2}')
+          echo "Expected fingerprint: $EXPECTED_FP"
+          echo "Loaded fingerprint:   $LOADED_FP"
+          if [ "$EXPECTED_FP" != "$LOADED_FP" ]; then
+            echo "FAIL: Fingerprint mismatch"
+            exit 1
+          fi
+          echo "PASS: Fingerprint matches"

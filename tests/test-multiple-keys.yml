@@ -1,0 +1,65 @@
+name: Test loading multiple SSH keys
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate two test SSH key pairs
+        run: |
+          ssh-keygen -t ed25519 -f /tmp/test_key1 -N "" -C "key1@example.com"
+          ssh-keygen -t ed25519 -f /tmp/test_key2 -N "" -C "key2@example.com"
+          # Combine both keys separated by a newline (as the action expects)
+          {
+            echo "MULTI_SSH_KEY<<EOF"
+            cat /tmp/test_key1
+            cat /tmp/test_key2
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+      - id: ssh-agent
+        uses: .
+        with:
+          ssh-private-key: ${{ env.MULTI_SSH_KEY }}
+          log-public-key: true
+
+      - name: Assert SSH agent socket exists
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ ! -S "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK socket does not exist"
+            exit 1
+          fi
+          echo "PASS: SSH agent socket exists"
+
+      - name: Assert both keys are loaded in agent
+        run: |
+          KEY_COUNT=$(ssh-add -l | wc -l)
+          echo "Keys loaded: $KEY_COUNT"
+          ssh-add -l
+          if [ "$KEY_COUNT" -lt 2 ]; then
+            echo "FAIL: Expected at least 2 keys, got $KEY_COUNT"
+            exit 1
+          fi
+          echo "PASS: Multiple keys loaded in SSH agent"
+
+      - name: Assert fingerprints of both keys are present
+        run: |
+          FP1=$(ssh-keygen -lf /tmp/test_key1.pub | awk '{print $2}')
+          FP2=$(ssh-keygen -lf /tmp/test_key2.pub | awk '{print $2}')
+          LOADED=$(ssh-add -l)
+          echo "Expected FP1: $FP1"
+          echo "Expected FP2: $FP2"
+          echo "Loaded keys:"
+          echo "$LOADED"
+          if ! echo "$LOADED" | grep -q "$FP1"; then
+            echo "FAIL: Key 1 fingerprint not found in agent"
+            exit 1
+          fi
+          if ! echo "$LOADED" | grep -q "$FP2"; then
+            echo "FAIL: Key 2 fingerprint not found in agent"
+            exit 1
+          fi
+          echo "PASS: Both key fingerprints found in agent"
