@@ -1,0 +1,69 @@
+name: Test SSH agent with multiple keys
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Generate two test SSH key pairs
+        run: |
+          ssh-keygen -t ed25519 -C "test1@example.com" -f /tmp/test_key1 -N ""
+          ssh-keygen -t ed25519 -C "test2@example.com" -f /tmp/test_key2 -N ""
+          # Combine both keys separated by a newline (action supports multiple keys)
+          echo "TEST_SSH_KEYS<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_key1 >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          cat /tmp/test_key2 >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - id: ssh-agent
+        name: Start SSH agent with multiple keys
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEYS }}
+
+      - name: Assert SSH_AUTH_SOCK is set
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          echo "PASS: SSH_AUTH_SOCK is set"
+
+      - name: Assert both keys are loaded in agent
+        run: |
+          KEY_COUNT=$(ssh-add -l | wc -l)
+          echo "Keys loaded: $KEY_COUNT"
+          ssh-add -l
+          if [ "$KEY_COUNT" -lt 2 ]; then
+            echo "FAIL: Expected at least 2 keys, got $KEY_COUNT"
+            exit 1
+          fi
+          echo "PASS: $KEY_COUNT keys loaded"
+
+      - name: Assert first key fingerprint is present
+        run: |
+          FP1=$(ssh-keygen -lf /tmp/test_key1.pub | awk '{print $2}')
+          echo "Expected fingerprint 1: $FP1"
+          LOADED=$(ssh-add -l)
+          echo "Loaded keys: $LOADED"
+          if ! echo "$LOADED" | grep -q "$FP1"; then
+            echo "FAIL: First key fingerprint not found in agent"
+            exit 1
+          fi
+          echo "PASS: First key is loaded"
+
+      - name: Assert second key fingerprint is present
+        run: |
+          FP2=$(ssh-keygen -lf /tmp/test_key2.pub | awk '{print $2}')
+          echo "Expected fingerprint 2: $FP2"
+          LOADED=$(ssh-add -l)
+          echo "Loaded keys: $LOADED"
+          if ! echo "$LOADED" | grep -q "$FP2"; then
+            echo "FAIL: Second key fingerprint not found in agent"
+            exit 1
+          fi
+          echo "PASS: Second key is loaded"

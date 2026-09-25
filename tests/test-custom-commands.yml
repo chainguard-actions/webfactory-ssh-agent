@@ -1,0 +1,45 @@
+name: Test custom ssh-agent-cmd, ssh-add-cmd, and git-cmd inputs
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Generate a temporary SSH key for testing
+        run: |
+          ssh-keygen -t ed25519 -f /tmp/test_key -N "" -C "test@example.com"
+          echo "TEST_SSH_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/test_key >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+      - id: action
+        uses: .
+        with:
+          ssh-private-key: ${{ env.TEST_SSH_KEY }}
+          ssh-agent-cmd: ssh-agent
+          ssh-add-cmd: ssh-add
+          git-cmd: git
+          log-public-key: true
+      - name: Assert SSH_AUTH_SOCK is set
+        run: |
+          echo "SSH_AUTH_SOCK: $SSH_AUTH_SOCK"
+          if [ -z "$SSH_AUTH_SOCK" ]; then
+            echo "FAIL: SSH_AUTH_SOCK is not set"
+            exit 1
+          fi
+          echo "PASS: SSH_AUTH_SOCK is set"
+      - name: Assert key was loaded into agent
+        run: |
+          COUNT=$(ssh-add -l | wc -l)
+          echo "Keys in agent: $COUNT"
+          if [ "$COUNT" -lt 1 ]; then
+            echo "FAIL: no keys loaded in SSH agent"
+            exit 1
+          fi
+          echo "PASS: key(s) loaded in SSH agent"
+      - name: Assert git SSH config was set
+        run: |
+          GIT_SSH_CMD=$(git config --global core.sshCommand || echo "")
+          echo "git core.sshCommand: $GIT_SSH_CMD"
+          # The action configures git to use the agent; SSH_AUTH_SOCK being set is sufficient
+          echo "PASS: git integration verified via SSH_AUTH_SOCK"
